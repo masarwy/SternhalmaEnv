@@ -9,11 +9,69 @@ class Board:
         self.diagonal = diagonal
         self.num_players = num_players
         self.turn = 0
+        self.directions = [(-1, -1), (-1, 1), (1, -1), (1, 1), (-2, 0), (2, 0)]
         self.grid = None
         self.width = None
         self.height = None
         self.players = None
         self.initialize_board()
+
+    def dfs_jumps(self, current_position: Tuple[int, int], path: List[Tuple[int, int]], visited,
+                  possible_moves: List[List[Tuple[int, int]]], made_jump=False) -> None:
+
+        for direction in self.directions:
+            # Calculate the next position, considering it as a potential piece to jump over
+            next_position = (current_position[0] + direction[0], current_position[1] + direction[1])
+
+            # Ensure the next move is within the grid bounds and to an occupied cell (a piece to jump over)
+            if self.is_within_bounds(next_position) and self.grid[next_position[0]][next_position[1]].isupper() and \
+                    self.grid[next_position[0]][next_position[1]] != 'O':
+                # Calculate the landing position after the jump
+                jump_position = (next_position[0] + direction[0], next_position[1] + direction[1])
+
+                # Ensure the landing position is within bounds, not visited, and is an empty cell ('O')
+                if self.is_within_bounds(jump_position) and jump_position not in visited and \
+                        self.grid[jump_position[0]][jump_position[1]] == 'O':
+                    # Add the current jump to the path and continue exploring from the jump_position
+                    path.append(jump_position)
+                    visited.add(jump_position)
+
+                    # Call dfs_jumps recursively with made_jump=True since a jump has been made
+                    self.dfs_jumps(jump_position, path, visited, possible_moves, made_jump=True)
+
+                    # Backtrack: remove the current jump from the path and visited set
+                    path.pop()
+                    visited.remove(jump_position)
+
+        # If at least one jump has been made in this path, add the path to possible_moves
+        if made_jump and len(path) > 1:
+            possible_moves.append(list(path))
+
+    def simple_moves(self, start_position: Tuple[int, int]) -> List[List[Tuple[int, int]]]:
+        moves = []
+        for direction in self.directions:
+            next_position = (start_position[0] + direction[0], start_position[1] + direction[1])
+            if not self.is_within_bounds(next_position):
+                continue
+            if self.grid[next_position[0]][next_position[1]] == 'O':
+                moves.append([start_position, next_position])
+        return moves
+
+    def is_within_bounds(self, position: Tuple[int, int]) -> bool:
+        return 0 < position[0] < self.height and 0 < position[1] < self.width
+
+    def find_possible_jumps(self, start_position: Tuple[int, int]) -> List[List[Tuple[int, int]]]:
+        possible_moves = []
+        self.dfs_jumps(start_position, [start_position], {start_position}, possible_moves)
+        return possible_moves
+
+    def get_available_moves(self, player_idx: int) -> List[List[Tuple[int, int]]]:
+        moves = []
+        pieces = self.players[player_idx].get_pieces()
+        for piece in pieces:
+            moves.extend(self.simple_moves(piece))
+            moves.extend(self.find_possible_jumps(piece))
+        return moves
 
     def get_dims(self):
         return self.height, self.width
@@ -61,6 +119,10 @@ class Board:
                 for p in pieces:
                     self.grid[p[0]][p[1]] = player.get_piece()
 
+    def is_in_home_triangle(self, position: Tuple[int, int], player_idx: int):
+        player = self.players[player_idx]
+        return position in get_triangle_indices(self.grid, self.diagonal, player.get_home_triangle())
+
     def is_valid_move(self, positions: List[Tuple[int, int]], player_idx: int) -> bool:
         if len(positions) < 2:
             return False
@@ -68,7 +130,7 @@ class Board:
         if self.grid[positions[0][0]][positions[0][1]] != self.players[player_idx].get_piece():
             return False
 
-        if not (0 <= positions[0][0] < self.height and 0 <= positions[0][1] < self.width):
+        if not (0 < positions[0][0] < self.height and 0 < positions[0][1] < self.width):
             return False
 
         elif len(positions) == 2:
@@ -76,7 +138,7 @@ class Board:
             to_row, to_col = positions[1]
 
             # Check if to_position is within board bounds
-            if not (0 <= to_row < self.height and 0 <= to_col < self.width):
+            if not (0 < to_row < self.height and 0 < to_col < self.width):
                 return False
 
             if abs(from_row - to_row) == 1 and abs(from_col - to_col) == 1:  # Diagonally adjacent
