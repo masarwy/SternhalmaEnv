@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
-from grid import generate_board, get_triangle_indices, print_grid
-from player import Player
+from .grid import generate_board, get_triangle_indices, print_grid
+from .player import Player
 
 
 class Board:
@@ -127,10 +127,10 @@ class Board:
         if len(positions) < 2:
             return False
 
-        if self.grid[positions[0][0]][positions[0][1]] != self.players[player_idx].get_piece():
+        if not (0 < positions[0][0] < self.height and 0 < positions[0][1] < self.width):
             return False
 
-        if not (0 < positions[0][0] < self.height and 0 < positions[0][1] < self.width):
+        if self.grid[positions[0][0]][positions[0][1]] != self.players[player_idx].get_piece():
             return False
 
         elif len(positions) == 2:
@@ -158,7 +158,7 @@ class Board:
             for i in range(1, len(positions)):
                 next_row, next_col = positions[i]
 
-                if not (0 <= next_row < self.height and 0 <= next_col < self.width):
+                if not (0 < next_row < self.height and 0 < next_col < self.width):
                     return False
 
                 mid_row, mid_col = (next_row + curr_row) // 2, (next_col + curr_col) // 2
@@ -166,7 +166,7 @@ class Board:
                     return False
 
                 # Check if to_position is within board bounds
-                if not (0 <= next_row < self.height and 0 <= next_col < self.width):
+                if not (0 < next_row < self.height and 0 < next_col < self.width):
                     return False
 
                 if abs(curr_row - next_row) == 2 and abs(curr_col - next_col) == 2:

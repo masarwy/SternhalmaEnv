@@ -63,7 +63,7 @@ class SternhalmaEnvironment(AECEnv):
         self.observation_space = spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8)
 
         # Jumping over all the pieces
-        max_length = num_players * ((board_diagonal // 2) * (board_diagonal // 2 + 1)) // 2
+        max_length = num_players * ((board_diagonal // 2) * (board_diagonal // 2 + 1)) // 2 - 1
 
         self.action_space = VariableLengthTupleSpace(
             max_length=max_length,
@@ -71,21 +71,18 @@ class SternhalmaEnvironment(AECEnv):
             high=max(h - 1, w - 1)
         )
 
-    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> None:
-        """
-        Resets the environment to its initial state.
-
-        Args:
-            seed (Optional[int]): The seed for random number generation.
-            options (Optional[Dict]): Additional options for resetting the environment.
-        """
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Dict[str, np.ndarray]:
         self.board.initialize_board()
         self.agent_selection = self._agent_selector.reset()
         self.rewards = {agent: 0 for agent in self.agents}
         self.dones = {agent: False for agent in self.agents}
         self.infos = {agent: {} for agent in self.agents}
 
-    def step(self, action: Dict[str, Any]) -> None:
+        # Assuming `observe` method returns observation for a given agent
+        observations = {agent: self.observe(agent) for agent in self.agents}
+        return observations
+
+    def step(self, action: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, bool], Dict[str, Any]]:
         agent = self.agent_selection
         player_idx = self.agent_name_mapping[agent]
 
@@ -97,11 +94,19 @@ class SternhalmaEnvironment(AECEnv):
         else:
             # For invalid moves
             reward = -1.0  # Penalty for invalid move
-            info = {'invalid_move': True}
+            info = {'c': True}
+            self.rewards[agent] += reward
+            self.infos[agent] = info
+            return {agent: reward}, self.dones, self.infos
 
         self.rewards[agent] += reward
-        self.dones[agent] = self.board.check_winner(player_idx) or info.get('invalid_move', False)
+        self.dones[agent] = self.board.check_winner(player_idx)
         self.infos[agent] = info
+
+        # Move to the next agent
+        self.agent_selection = self._agent_selector.next()
+
+        return {agent: reward}, self.dones, self.infos
 
     def render(self, mode: str = 'ansi') -> None:
         """

@@ -3,14 +3,14 @@ import numpy as np
 
 class VariableLengthTupleSpace:
     def __init__(self, max_length, low, high):
-        self.max_length = max_length  # Maximum sequence length
+        self.max_length = max_length  # Maximum sequence lengthTh
         self.low = low  # Minimum value in each dimension
         self.high = high  # Maximum value in each dimension
 
-    def sample_biased(self):
+    def sample(self):
         """Generate a random sample action within the space, with bias towards shorter actions."""
         # Create weights that are inversely proportional to the sequence length
-        weights = np.exp(-np.arange(0, self.max_length))
+        weights = np.exp(-np.arange(0, self.max_length-2))
         # Normalize weights to create a probability distribution
         probabilities = weights / weights.sum()
         # Randomly choose a sequence length based on the biased probabilities
