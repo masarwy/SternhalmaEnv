@@ -9,12 +9,13 @@ from gymnasium import spaces
 import pygame
 
 from sternhalma.utils.board import Board
-from sternhalma.utils.types import VariableLengthTupleSpace
+from sternhalma.utils.types import VariableLengthTupleSpace, HandleNoOpWrapper
 
 
 def env(**kwargs):
     env = raw_env(**kwargs)
     env = wrappers.AssertOutOfBoundsWrapper(env)
+    env = HandleNoOpWrapper(env)
     env = wrappers.OrderEnforcingWrapper(env)
     return env
 
@@ -126,13 +127,19 @@ class raw_env(AECEnv):
         if self.render_mode == "human":
             self.render()
 
-    def step(self, action: List[Tuple[int, int]]) -> None:
+    def step(self, action: Optional[List[Tuple[int, int]]]) -> None:
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
             return self._was_dead_step(action)
 
         agent = self.agent_selection
         player_idx = self.agents.index(agent)
         self._clear_rewards()
+
+        if not self.infos[agent]['valid_moves']:  # If no available actions, skip to next player
+            self._accumulate_rewards()  # Accumulate rewards if any before skipping
+            self.agent_selection = self._agent_selector.next()  # Move to the next agent
+            self.infos[self.agent_selection] = {'valid_moves': self.get_available_actions(self.agent_selection)}
+            return
 
         move = self.convert_action_to_move(action)
         if self.board.is_valid_move(move, player_idx):
@@ -163,6 +170,11 @@ class raw_env(AECEnv):
 
         if self.render_mode == "human":
             self.render()
+
+    def skip_turn(self) -> None:
+        """Advances to the next agent, effectively skipping the current agent's turn."""
+        self.agent_selection = self._agent_selector.next()
+        self.infos[self.agent_selection] = {'valid_moves': self.get_available_actions(self.agent_selection)}
 
     def observe(self, agent: str) -> np.ndarray:
         """

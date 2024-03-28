@@ -1,6 +1,7 @@
 import numpy as np
 from gymnasium import Space
 from typing import Any, TypeVar
+from pettingzoo.utils import BaseWrapper
 
 T_cov = TypeVar("T_cov", covariant=True)
 
@@ -30,3 +31,12 @@ class VariableLengthTupleSpace(Space):
         if not (1 <= len(x) <= self.max_length):
             return False
         return all(self.low <= t[0] <= self.high and self.low <= t[1] <= self.high for t in x)
+
+
+class HandleNoOpWrapper(BaseWrapper):
+    def step(self, action):
+        if action is None:
+            # Use the public method to skip the turn
+            self.env.skip_turn()
+        else:
+            super().step(action)
