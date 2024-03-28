@@ -28,8 +28,8 @@ class raw_env(AECEnv):
         num_players (int): The number of players in the game.
         board (Board): The game board.
         agents (list): List of agents participating in the environment.
-        observation_space (spaces.Box): The observation space of the environment, representing the game board.
-        action_space (VariableLengthTupleSpace): The action space for the environment, allowing for a range of move
+        observation_spaces (spaces.Box): The observation space of the environment, representing the game board.
+        action_spaces (VariableLengthTupleSpace): The action space for the environment, allowing for a range of move
             sequences each turn. Each action is a list of 2D position tuples, representing moves on the board. The space
             is defined with an exponential bias towards shorter move sequences to favor more common game situations.
         rewards (dict): A dictionary mapping agents to their current rewards.
@@ -191,7 +191,6 @@ class raw_env(AECEnv):
 
         Args:
             action (Dict[str, Any]): The action to convert.
-            agent (str): The name of the agent performing the action.
 
         Returns:
             List[Tuple[int, int]]: The corresponding move on the board.
