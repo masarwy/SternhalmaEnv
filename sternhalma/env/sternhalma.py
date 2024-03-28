@@ -1,14 +1,25 @@
+import math
 import numpy as np
+import gymnasium
 from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
+from pettingzoo.utils import wrappers
 from typing import Dict, Any, List, Tuple, Optional
 from gymnasium import spaces
+import pygame
 
 from ..utils.board import Board
 from ..utils.types import VariableLengthTupleSpace
 
 
-class SternhalmaEnvironment(AECEnv):
+def env(**kwargs):
+    env = raw_env(**kwargs)
+    env = wrappers.AssertOutOfBoundsWrapper(env)
+    env = wrappers.OrderEnforcingWrapper(env)
+    return env
+
+
+class raw_env(AECEnv):
     """
     A PettingZoo environment for the Sternhalma game (also known as Chinese Checkers).
 
@@ -22,17 +33,20 @@ class SternhalmaEnvironment(AECEnv):
             sequences each turn. Each action is a list of 2D position tuples, representing moves on the board. The space
             is defined with an exponential bias towards shorter move sequences to favor more common game situations.
         rewards (dict): A dictionary mapping agents to their current rewards.
-        dones (dict): A dictionary mapping agents to boolean values indicating whether they are done.
         infos (dict): A dictionary mapping agents to additional info dictionaries.
         _agent_selector (agent_selector): A PettingZoo utility to manage turn order among agents.
         agent_selection (str): The currently selected agent.
-        agent_name_mapping (dict): A mapping from agent names to their indices.
         char_encoding (dict): Encoding of the board characters for observation space.
     """
 
-    metadata = {'render.modes': ['ansi']}
+    metadata = {
+        "render_modes": ["human", "ansi", "rgb_array"],
+        "name": "sternhalma_v0",
+        "is_parallelizable": False,
+        "render_fps": 2,
+    }
 
-    def __init__(self, num_players: int, board_diagonal: int):
+    def __init__(self, num_players: int, board_diagonal: int, render_mode: Optional[str]):
         """
         Initializes the Sternhalma environment.
 
@@ -50,78 +64,109 @@ class SternhalmaEnvironment(AECEnv):
         h, w = self.board.get_dims()
 
         self.agents = [f"player_{i}" for i in range(self.num_players)]
+        self.possible_agents = self.agents[:]
+
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.reset()
-        self.agent_name_mapping = dict(zip(self.agents, list(range(self.num_players))))
 
         self.rewards = {agent: 0 for agent in self.agents}
-        self.dones = {agent: False for agent in self.agents}
+        self._cumulative_rewards = {name: 0 for name in self.agents}
+        self.truncations = {name: False for name in self.agents}
+        self.terminations = {name: False for name in self.agents}
         self.infos = {agent: {} for agent in self.agents}
 
         self.char_encoding = {' ': -2, 'O': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, '|': -1}
 
-        self.observation_space = spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8)
+        self.observation_spaces = {agent: spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8) for agent in
+                                   self.agents}
 
         # Jumping over all the pieces
-        max_length = num_players * ((board_diagonal // 2) * (board_diagonal // 2 + 1)) // 2 - 1
+        max_length = num_players * ((board_diagonal // 2) * (board_diagonal // 2 + 1)) // 2
 
-        self.action_space = VariableLengthTupleSpace(
-            max_length=max_length,
-            low=0,
-            high=max(h - 1, w - 1)
-        )
+        self.action_spaces = {agent: VariableLengthTupleSpace(max_length=max_length, low=0, high=max(h - 1, w - 1)) for
+                              agent in self.agents}
 
-    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Dict[str, np.ndarray]:
+        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        self.render_mode = render_mode
+
+        self.screen = None
+
+        if self.render_mode in ["human", "rgb_array"]:
+            self.hex_diagonal = 20
+            self.hex_height = math.sqrt(3) * self.hex_diagonal / 2
+
+            self.piece_radius = 10
+
+            height = int(self.hex_height * 3 * board_diagonal)
+            width = board_diagonal * self.hex_diagonal * 3
+
+            self.window_size = (width, height)
+
+            self.clock = pygame.time.Clock()
+
+            self.piece_colors = [(128, 0, 0), (0, 128, 0), (0, 0, 128), (128, 128, 0), (128, 80, 0), (75, 0, 130)]
+            self.home_colors = [(166, 0, 0), (0, 166, 0), (0, 0, 166), (166, 166, 0), (166, 104, 0), (97, 0, 169)]
+
+    def observation_space(self, agent):
+        return self.observation_spaces[agent]
+
+    def action_space(self, agent):
+        return self.action_spaces[agent]
+
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> None:
+        self.agents = self.possible_agents[:]
+
         self.board.initialize_board()
+
+        self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.reset()
-        self.rewards = {agent: 0 for agent in self.agents}
-        self.dones = {agent: False for agent in self.agents}
+        self._clear_rewards()
+        self._cumulative_rewards = {name: 0 for name in self.agents}
+        self.terminations = {name: False for name in self.agents}
+        self.truncations = {name: False for name in self.agents}
         self.infos = {agent: {} for agent in self.agents}
+        self.infos[self.agent_selection]['valid_moves'] = self.get_available_actions(self.agent_selection)
 
-        # Assuming `observe` method returns observation for a given agent
-        observations = {agent: self.observe(agent) for agent in self.agents}
-        return observations
+        if self.render_mode == "human":
+            self.render()
 
-    def step(self, action: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, bool], Dict[str, Any]]:
+    def step(self, action: List[Tuple[int, int]]) -> None:
+        if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
+            return self._was_dead_step(action)
+
         agent = self.agent_selection
-        player_idx = self.agent_name_mapping[agent]
+        player_idx = self.agents.index(agent)
+        self._clear_rewards()
 
-        move = self.convert_action_to_move(action, agent)
+        move = self.convert_action_to_move(action)
         if self.board.is_valid_move(move, player_idx):
             self.board.make_move(player_idx, move)
             reward = self.calculate_reward(player_idx, move)
-            info = self.collect_game_info(player_idx)
+            if self.check_termination(player_idx):
+                self.terminations = {name: True for name in self.agents}
+                self.rewards = {name: -10 for name in self.agents}
+                self.rewards[agent] = 10
         else:
             # For invalid moves
             reward = -1.0  # Penalty for invalid move
-            info = {'c': True}
-            self.rewards[agent] += reward
+            info = {'invalid_move': True, 'valid_moves': self.infos[agent]['valid_moves']}
+            self.rewards[agent] = reward
             self.infos[agent] = info
-            return {agent: reward}, self.dones, self.infos
+            self._accumulate_rewards()
+            return
 
         self.rewards[agent] += reward
-        self.dones[agent] = self.board.check_winner(player_idx)
-        self.infos[agent] = info
+        self.infos[agent] = {}
+
+        self._accumulate_rewards()
 
         # Move to the next agent
         self.agent_selection = self._agent_selector.next()
+        next_agent = self.agent_selection
+        self.infos[next_agent] = {'valid_moves': self.get_available_actions(next_agent)}
 
-        return {agent: reward}, self.dones, self.infos
-
-    def render(self, mode: str = 'ansi') -> None:
-        """
-        Renders the current state of the environment.
-
-        Args:
-            mode (str): The mode to render with. Currently, only 'ansi' is supported.
-
-        Raises:
-            NotImplementedError: If an unsupported render mode is specified.
-        """
-        if mode == 'ansi':
-            self.board.print_board()
-        else:
-            raise NotImplementedError(f"Render mode {mode} not implemented.")
+        if self.render_mode == "human":
+            self.render()
 
     def observe(self, agent: str) -> np.ndarray:
         """
@@ -133,37 +178,14 @@ class SternhalmaEnvironment(AECEnv):
         Returns:
             np.ndarray: The observation of the environment for the specified agent.
         """
+        return self.state()
+
+    def state(self) -> np.ndarray:
         board_array = np.array(self.board.get_grid())
         observation = np.vectorize(self.char_encoding.get)(board_array[1:, 1:])
         return observation
 
-    def num_agents(self) -> int:
-        """
-        Returns the number of agents in the environment.
-
-        Returns:
-            int: The number of agents.
-        """
-        return self.num_players
-
-    def last(self, observe: bool = True) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
-        """
-        Returns the observation, reward, done flag, and info for the last agent selected.
-
-        Args:
-            observe (bool): Whether to include the observation in the returned tuple.
-
-        Returns:
-            Tuple[np.ndarray, float, bool, Dict[str, Any]]: A tuple containing the last observation, reward, done flag, and info for the selected agent.
-        """
-        agent = self.agent_selection
-        observation = self.observe(agent) if observe else None
-        reward = self.rewards.get(agent, 0)
-        done = self.dones.get(agent, False)
-        info = self.infos.get(agent, {})
-        return observation, reward, done, info
-
-    def convert_action_to_move(self, action: Dict[str, Any], agent: str) -> List[Tuple[int, int]]:
+    def convert_action_to_move(self, action: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """
         Converts an action received from an agent to the corresponding move on the board.
 
@@ -174,7 +196,7 @@ class SternhalmaEnvironment(AECEnv):
         Returns:
             List[Tuple[int, int]]: The corresponding move on the board.
         """
-        return [(cell[0] + 1, cell[1] + 1) for cell in action[agent]]
+        return [(cell[0] + 1, cell[1] + 1) for cell in action]
 
     def convert_move_to_action(self, move: List[Tuple[int, int]]) -> Any:
         """
@@ -199,7 +221,7 @@ class SternhalmaEnvironment(AECEnv):
             List[int]: A list of available actions for the agent.
         """
         available_actions = []
-        player_idx = self.agent_name_mapping[agent]
+        player_idx = self.agents.index(agent)
         for move in self.board.get_available_moves(player_idx):
             available_actions.append(self.convert_move_to_action(move))
         return available_actions
@@ -217,25 +239,101 @@ class SternhalmaEnvironment(AECEnv):
             float: The reward resulting from the move.
         """
         # Check the final position in the move to see if it's in the home triangle
+        start_position = move[0]
         final_position = move[-1]
-        if self.board.is_in_home_triangle(final_position, player_idx):
+        if self.board.is_in_home_triangle(final_position, player_idx) and not self.board.is_in_home_triangle(
+                start_position, player_idx):
             return 1.0
         else:
             return 0.0
 
-    def collect_game_info(self, player_idx: int) -> Dict[str, Any]:
+    def check_termination(self, player_idx: int) -> bool:
         """
-        Collect additional information about the game state after an action is taken.
+        Check termination after an action is taken.
 
         Args:
             player_idx (int): The index of the player who took the action.
 
         Returns:
-            Dict[str, Any]: A dictionary containing additional game state information.
+            bool: A boolean indicating the termination for the player who took the action.
         """
-        info = {
-            'winner': self.board.check_winner(player_idx)
-        }
-        return info
 
+        return self.board.check_winner(player_idx)
 
+    def render(self):
+        """
+        Renders the current state of the environment.
+
+        Raises:
+            NotImplementedError: If an unsupported render mode is specified.
+        """
+        if self.render_mode is None:
+            gymnasium.logger.warn(
+                "You are calling render method without specifying any render mode."
+            )
+        elif self.render_mode == "ansi":
+            return str(self.board)
+        elif self.render_mode in {"human", "rgb_array"}:
+            return self._render_gui()
+        else:
+            raise ValueError(
+                f"{self.render_mode} is not a valid render mode. Available modes are: {self.metadata['render_modes']}"
+            )
+
+    def _render_gui(self):
+        if self.screen is None:
+            pygame.init()
+
+            if self.render_mode == "human":
+                pygame.display.set_caption("Sternhalma")
+                self.screen = pygame.display.set_mode(self.window_size)
+            elif self.render_mode == "rgb_array":
+                self.screen = pygame.Surface(self.window_size)
+
+        self.screen.fill((255, 255, 255))
+        board = self.board.get_grid()
+
+        for row_index, row in enumerate(board[1:], start=1):  # Skip the first row of labels
+            y = row_index * self.hex_height
+            for col_index, cell in enumerate(row[1:], start=1):  # Skip the first column of labels
+                x = col_index * 3 * self.hex_diagonal / 2
+                if cell != ' ' and cell != '|':
+                    self._draw_hexagon(self.screen, (x, y), (255, 255, 255), (0, 0, 0))
+                    for i, _ in enumerate(self.agents):
+                        home = self.board.get_home(i)
+                        if (row_index, col_index) in home:
+                            self._draw_hexagon(self.screen, (x, y), self.home_colors[i], (0, 0, 0))
+
+        for i, _ in enumerate(self.agents):
+            pieces = self.board.get_player_pieces(i)
+            for piece in pieces:
+                x = piece[1] * 3 * self.hex_diagonal / 2
+                y = piece[0] * self.hex_height
+                self._draw_circle(self.screen, (x, y), self.piece_colors[i])
+
+        if self.render_mode == "human":
+            pygame.display.update()
+            self.clock.tick(self.metadata["render_fps"])
+        elif self.render_mode == "rgb_array":
+            return np.transpose(
+                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
+            )
+
+    def _draw_hexagon(self, surface, center, color, perimeter_color):
+        points = []
+        for i in range(6):
+            angle_deg = 60 * i
+            angle_rad = math.pi / 180 * angle_deg
+            points.append((center[0] + self.hex_diagonal * math.cos(angle_rad),
+                           center[1] + self.hex_diagonal * math.sin(angle_rad)))
+        pygame.draw.polygon(surface, color, points)
+        pygame.draw.polygon(surface, perimeter_color, points, 1)
+
+    def _draw_circle(self, surface, center, fill_color):
+        # Draw the filled circle
+        pygame.draw.circle(surface, fill_color, center, self.piece_radius)
+
+    def close(self):
+        if self.screen is not None:
+            pygame.quit()
+            self.screen = None

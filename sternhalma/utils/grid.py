@@ -1,5 +1,6 @@
 from typing import List, Tuple
 
+
 def fill_submatrix_and_clear_triangle(matrix: List[List[str]], sub_top_left: Tuple[int, int], sub_length: int,
                                       clear_triangle: str) -> List[List[str]]:
     sub_row, sub_col = sub_top_left  # Top-left corner of the sub-matrix
@@ -71,7 +72,7 @@ def generate_triangle_pattern(matrix_size: int) -> List[List[str]]:
     return matrix
 
 
-def print_grid(lists_of_chars: List[List[str]]) -> None:
+def grid_str(lists_of_chars: List[List[str]]) -> str:
     rows = len(lists_of_chars)
     cols = len(lists_of_chars[0]) if rows > 0 else 0
 
@@ -81,15 +82,17 @@ def print_grid(lists_of_chars: List[List[str]]) -> None:
     # Adjust the cell width based on the maximum content width
     cell_width = max_width + 2  # Adding padding on both sides
 
-    # Print the top border
-    print('+' + ('-' * cell_width + '+') * cols)
+    # The top border
+    board_str = ['+' + ('-' * cell_width + '+') * cols]
 
     for row in lists_of_chars:
-        # Print the row with vertical separators and adjusted spacing
-        print('|' + '|'.join(f'{char:^{cell_width}}' for char in row) + '|')
+        # The row with vertical separators and adjusted spacing
+        board_str.append('|' + '|'.join(f'{char:^{cell_width}}' for char in row) + '|')
 
-        # Print the horizontal separator after the row
-        print('+' + ('-' * cell_width + '+') * cols)
+        # The horizontal separator after the row
+        board_str.append('+' + ('-' * cell_width + '+') * cols)
+
+    return '\n'.join(board_str)
 
 
 def get_triangle_indices(grid: List[List[str]], board_size: int, triangle: int) -> List[Tuple[int, int]]:

@@ -1,16 +1,21 @@
 import numpy as np
+from gymnasium import Space
+from typing import Any, TypeVar
+
+T_cov = TypeVar("T_cov", covariant=True)
 
 
-class VariableLengthTupleSpace:
+class VariableLengthTupleSpace(Space):
     def __init__(self, max_length, low, high):
+        super().__init__()
         self.max_length = max_length  # Maximum sequence lengthTh
         self.low = low  # Minimum value in each dimension
         self.high = high  # Maximum value in each dimension
 
-    def sample(self):
+    def sample(self, mask: Any | None = None) -> T_cov:
         """Generate a random sample action within the space, with bias towards shorter actions."""
         # Create weights that are inversely proportional to the sequence length
-        weights = np.exp(-np.arange(0, self.max_length-2))
+        weights = np.exp(-np.arange(0, self.max_length - 2))
         # Normalize weights to create a probability distribution
         probabilities = weights / weights.sum()
         # Randomly choose a sequence length based on the biased probabilities

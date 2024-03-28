@@ -1,6 +1,6 @@
 from typing import List, Tuple
 
-from .grid import generate_board, get_triangle_indices, print_grid
+from .grid import generate_board, get_triangle_indices, grid_str
 from .player import Player
 
 
@@ -76,8 +76,11 @@ class Board:
     def get_dims(self):
         return self.height, self.width
 
-    def print_board(self):
-        print_grid(self.grid)
+    def __str__(self):
+        return grid_str(self.grid)
+
+    def __repr__(self) -> str:
+        return f"Grid({self.grid!r})"
 
     def get_grid(self) -> List[List[str]]:
         return self.grid
@@ -122,6 +125,14 @@ class Board:
     def is_in_home_triangle(self, position: Tuple[int, int], player_idx: int):
         player = self.players[player_idx]
         return position in get_triangle_indices(self.grid, self.diagonal, player.get_home_triangle())
+
+    def get_home(self, player_idx: int):
+        player = self.players[player_idx]
+        return get_triangle_indices(self.grid, self.diagonal, player.get_home_triangle())
+
+    def get_player_pieces(self, player_idx: int):
+        player = self.players[player_idx]
+        return player.get_pieces()
 
     def is_valid_move(self, positions: List[Tuple[int, int]], player_idx: int) -> bool:
         if len(positions) < 2:
