@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
-from .grid import generate_board, get_triangle_indices, grid_str
-from .player import Player
+from sternhalma.utils.grid import generate_board, get_triangle_indices, grid_str
+from sternhalma.utils.player import Player
 
 
 class Board:

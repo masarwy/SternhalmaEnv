@@ -8,8 +8,8 @@ from typing import Dict, Any, List, Tuple, Optional
 from gymnasium import spaces
 import pygame
 
-from ..utils.board import Board
-from ..utils.types import VariableLengthTupleSpace
+from sternhalma.utils.board import Board
+from sternhalma.utils.types import VariableLengthTupleSpace
 
 
 def env(**kwargs):
@@ -23,20 +23,9 @@ class raw_env(AECEnv):
     """
     A PettingZoo environment for the Sternhalma game (also known as Chinese Checkers).
 
-    Attributes:
-        metadata (dict): Metadata for the environment, specifying the render modes available.
-        num_players (int): The number of players in the game.
-        board (Board): The game board.
-        agents (list): List of agents participating in the environment.
-        observation_spaces (spaces.Box): The observation space of the environment, representing the game board.
-        action_spaces (VariableLengthTupleSpace): The action space for the environment, allowing for a range of move
-            sequences each turn. Each action is a list of 2D position tuples, representing moves on the board. The space
-            is defined with an exponential bias towards shorter move sequences to favor more common game situations.
-        rewards (dict): A dictionary mapping agents to their current rewards.
-        infos (dict): A dictionary mapping agents to additional info dictionaries.
-        _agent_selector (agent_selector): A PettingZoo utility to manage turn order among agents.
-        agent_selection (str): The currently selected agent.
-        char_encoding (dict): Encoding of the board characters for observation space.
+    The environment supports multiple rendering modes and manages the game state, including the board,
+    player pieces, and actions. It adheres to the PettingZoo AECEnv interface, providing methods for stepping
+    through the game, observing the state, and rendering.
     """
 
     metadata = {
@@ -48,16 +37,23 @@ class raw_env(AECEnv):
 
     def __init__(self, num_players: int, board_diagonal: int, render_mode: Optional[str]):
         """
-        Initializes the Sternhalma environment.
+        Initializes the Sternhalma environment with the specified number of players and board size.
 
         Args:
             num_players (int): Number of players in the game.
             board_diagonal (int): The size of the game board, measured diagonally across.
+            render_mode (Optional[str]): The mode used for rendering. Can be 'human', 'ansi', or 'rgb_array'.
 
         Raises:
             ValueError: If the board diagonal is not odd or less than 3, or if an invalid number of players is specified.
         """
         super().__init__()
+
+        if board_diagonal < 3 or board_diagonal % 2 == 0:
+            raise ValueError("board_diagonal must be an odd number and greater than or equal to 3.")
+
+        if num_players not in [2, 3, 4, 6]:
+            raise ValueError("num_players must be one of the following values: 2, 3, 4, 6.")
 
         self.num_players = num_players
         self.board = Board(board_diagonal, num_players)
