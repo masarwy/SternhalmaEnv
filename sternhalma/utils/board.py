@@ -10,10 +10,10 @@ class Board:
         self.num_players = num_players
         self.turn = 0
         self.directions = [(-1, -1), (-1, 1), (1, -1), (1, 1), (-2, 0), (2, 0)]
-        self.grid = None
-        self.width = None
-        self.height = None
-        self.players = None
+        self.grid: List[List[str]]
+        self.width: int
+        self.height: int
+        self.players: List[Player] = []
         self.initialize_board()
 
     def dfs_jumps(self, current_position: Tuple[int, int], path: List[Tuple[int, int]], visited,
@@ -61,7 +61,7 @@ class Board:
         return 0 < position[0] < self.height and 0 < position[1] < self.width
 
     def find_possible_jumps(self, start_position: Tuple[int, int]) -> List[List[Tuple[int, int]]]:
-        possible_moves = []
+        possible_moves: List[List[Tuple[int, int]]] = []
         self.dfs_jumps(start_position, [start_position], {start_position}, possible_moves)
         return possible_moves
 

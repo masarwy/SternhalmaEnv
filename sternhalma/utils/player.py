@@ -3,8 +3,8 @@ from typing import List, Tuple
 class Player:
     def __init__(self, piece_symbol: str):
         self.piece_symbol = piece_symbol
-        self.pieces = None
-        self.home_triangle = None
+        self.pieces: List[Tuple[int, int]] = []
+        self.home_triangle: int
 
     def set_pieces(self, pieces: List[Tuple[int, int]]) -> None:
         self.pieces = pieces

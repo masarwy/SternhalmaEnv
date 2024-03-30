@@ -1,9 +1,7 @@
 import numpy as np
 from gymnasium import Space
-from typing import Any, TypeVar
+from typing import Any, List, Tuple
 from pettingzoo.utils import BaseWrapper
-
-T_cov = TypeVar("T_cov", covariant=True)
 
 
 class VariableLengthTupleSpace(Space):
@@ -13,7 +11,7 @@ class VariableLengthTupleSpace(Space):
         self.low = low  # Minimum value in each dimension
         self.high = high  # Maximum value in each dimension
 
-    def sample(self, mask: Any | None = None) -> T_cov:
+    def sample(self, mask: Any | None = None) -> List[Tuple[int, int]]:
         """Generate a random sample action within the space, with bias towards shorter actions."""
         # Create weights that are inversely proportional to the sequence length
         weights = np.exp(-np.arange(0, self.max_length - 2))

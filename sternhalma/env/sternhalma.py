@@ -4,12 +4,19 @@ import gymnasium
 from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
 from pettingzoo.utils import wrappers
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, TypedDict
 from gymnasium import spaces
 import pygame
 
 from sternhalma.utils.board import Board
 from sternhalma.utils.types import VariableLengthTupleSpace, HandleNoOpWrapper
+
+
+class Metadata(TypedDict):
+    render_modes: List[str]
+    name: str
+    is_parallelizable: bool
+    render_fps: int
 
 
 def env(**kwargs):
@@ -29,7 +36,7 @@ class raw_env(AECEnv):
     through the game, observing the state, and rendering.
     """
 
-    metadata = {
+    metadata: Metadata = {
         "render_modes": ["human", "ansi", "rgb_array"],
         "name": "sternhalma_v0",
         "is_parallelizable": False,
@@ -66,11 +73,11 @@ class raw_env(AECEnv):
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.reset()
 
-        self.rewards = {agent: 0 for agent in self.agents}
-        self._cumulative_rewards = {name: 0 for name in self.agents}
+        self.rewards = {agent: 0. for agent in self.agents}
+        self._cumulative_rewards = {name: 0. for name in self.agents}
         self.truncations = {name: False for name in self.agents}
         self.terminations = {name: False for name in self.agents}
-        self.infos = {agent: {} for agent in self.agents}
+        self.infos: Dict[str, Dict] = {agent: {} for agent in self.agents}
 
         self.char_encoding = {' ': -2, 'O': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, '|': -1}
 
@@ -127,7 +134,7 @@ class raw_env(AECEnv):
         if self.render_mode == "human":
             self.render()
 
-    def step(self, action: Optional[List[Tuple[int, int]]]) -> None:
+    def step(self, action: List[Tuple[int, int]]) -> None:
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
             return self._was_dead_step(action)
 

@@ -35,14 +35,14 @@ def fill_submatrix_and_clear_triangle(matrix: List[List[str]], sub_top_left: Tup
 
 def generate_board(dia: int) -> List[List[str]]:
     if dia % 2 == 0:
-        raise 'Invalid Diagonal'
+        raise ValueError('Invalid Diagonal')
     width = 2 * dia
     height = 2 + 6 * (dia // 2)
     grid = [[' ' for _ in range(width)] for _ in range(height)]
     for i in range(1, height):
-        grid[i][0] = i
+        grid[i][0] = str(i)
     for i in range(1, width):
-        grid[0][i] = i
+        grid[0][i] = str(i)
 
     corner_row = height // 2
     first_corner_col = width // 2 - dia // 2
