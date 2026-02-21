@@ -51,6 +51,7 @@ env = sternhalma_v0.env(
     num_players=2,
     board_diagonal=5,
     render_mode=None,
+    reward_mode="sparse",  # "sparse" | "dense" | "potential_shaped"
 )
 env.reset()
 
@@ -105,6 +106,10 @@ Wrapper behavior:
 - A player wins when they have majority control of their target home triangle.
 - Invalid actions are penalized (`-1.0`) and turn does not advance.
 - If no move exists for the current player, a no-op/skip is used automatically.
+- Reward modes:
+  - `sparse`: `+1` when a piece enters home triangle from outside, else `0`
+  - `dense`: per-move distance progress toward home (`start_distance - final_distance`)
+  - `potential_shaped`: `sparse + dense`
 
 ## Run Tests
 ```bash

@@ -43,7 +43,15 @@ class raw_env(AECEnv):
         "render_fps": 2,
     }
 
-    def __init__(self, num_players: int, board_diagonal: int, render_mode: Optional[str]):
+    VALID_REWARD_MODES = {"sparse", "dense", "potential_shaped"}
+
+    def __init__(
+        self,
+        num_players: int,
+        board_diagonal: int,
+        render_mode: Optional[str],
+        reward_mode: str = "sparse",
+    ):
         """
         Initializes the Sternhalma environment with the specified number of players and board size.
 
@@ -51,6 +59,7 @@ class raw_env(AECEnv):
             num_players (int): Number of players in the game.
             board_diagonal (int): The size of the game board, measured diagonally across.
             render_mode (Optional[str]): The mode used for rendering. Can be 'human', 'ansi', or 'rgb_array'.
+            reward_mode (str): Reward calculation mode. One of: "sparse", "dense", "potential_shaped".
 
         Raises:
             ValueError: If the board diagonal is not odd or less than 3, or if an invalid number of players is specified.
@@ -63,7 +72,13 @@ class raw_env(AECEnv):
         if num_players not in [2, 3, 4, 6]:
             raise ValueError("num_players must be one of the following values: 2, 3, 4, 6.")
 
+        if reward_mode not in self.VALID_REWARD_MODES:
+            raise ValueError(
+                f"reward_mode must be one of {sorted(self.VALID_REWARD_MODES)}, got: {reward_mode!r}."
+            )
+
         self.num_players = num_players
+        self.reward_mode = reward_mode
         self.board = Board(board_diagonal, num_players)
         h, w = self.board.get_dims()
 
@@ -292,26 +307,63 @@ class raw_env(AECEnv):
             available_actions.append(self.convert_move_to_action(move))
         return available_actions
 
+    @staticmethod
+    def _to_axial(position: Tuple[int, int]) -> Tuple[float, float]:
+        # Board coordinates are represented on a skewed 2D grid; convert to axial for hex-distance math.
+        row, col = position
+        return float(col), float((row - col) / 2.0)
+
+    @classmethod
+    def _hex_distance(cls, source: Tuple[int, int], target: Tuple[int, int]) -> int:
+        source_q, source_r = cls._to_axial(source)
+        target_q, target_r = cls._to_axial(target)
+        dq = source_q - target_q
+        dr = source_r - target_r
+        return int(round((abs(dq) + abs(dr) + abs(dq + dr)) / 2.0))
+
+    def _distance_to_home(self, position: Tuple[int, int], player_idx: int) -> int:
+        home_positions = self.board.get_home(player_idx)
+        if not home_positions:
+            return 0
+        return min(self._hex_distance(position, home_position) for home_position in home_positions)
+
+    def sparse_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
+        start_position = move[0]
+        final_position = move[-1]
+        if self.board.is_in_home_triangle(final_position, player_idx) and not self.board.is_in_home_triangle(
+            start_position, player_idx
+        ):
+            return 1.0
+        return 0.0
+
+    def dense_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
+        start_position = move[0]
+        final_position = move[-1]
+        start_distance = self._distance_to_home(start_position, player_idx)
+        final_distance = self._distance_to_home(final_position, player_idx)
+        return float(start_distance - final_distance)
+
+    def potential_shaped_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
+        return self.sparse_reward(player_idx, move) + self.dense_reward(player_idx, move)
+
     def calculate_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
         """
-        Calculate the reward for the agent after making a move.
-        A reward of 1 is given for each piece that reaches the home triangle.
+        Calculate the reward for the acting agent according to `self.reward_mode`.
 
         Args:
             player_idx (int): The index of the player who made the move.
-            move (List[Tuple[int, int]]): The move made by the player, which is a list of tuples representing the positions.
+            move (List[Tuple[int, int]]): The move made by the player.
 
         Returns:
             float: The reward resulting from the move.
         """
-        # Check the final position in the move to see if it's in the home triangle
-        start_position = move[0]
-        final_position = move[-1]
-        if self.board.is_in_home_triangle(final_position, player_idx) and not self.board.is_in_home_triangle(
-                start_position, player_idx):
-            return 1.0
-        else:
-            return 0.0
+        if self.reward_mode == "sparse":
+            return self.sparse_reward(player_idx, move)
+        if self.reward_mode == "dense":
+            return self.dense_reward(player_idx, move)
+        if self.reward_mode == "potential_shaped":
+            return self.potential_shaped_reward(player_idx, move)
+        raise RuntimeError(f"Unsupported reward_mode: {self.reward_mode!r}")
 
     def check_termination(self, player_idx: int) -> bool:
         """
