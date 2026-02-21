@@ -39,6 +39,25 @@ class EnvTests(unittest.TestCase):
         self.assertEqual(state.shape, expected_shape)
         env.close()
 
+    def test_step_rejects_action_not_in_valid_moves(self):
+        env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
+        env.reset()
+        acting_agent = env.agent_selection
+        invalid_action = [(0, 0), (0, 1)]
+
+        self.assertNotIn(invalid_action, env.infos[acting_agent]["valid_moves"])
+
+        original_is_valid_move = env.unwrapped.board.is_valid_move
+        env.unwrapped.board.is_valid_move = lambda _move, _player_idx: True
+        try:
+            env.step(invalid_action)
+        finally:
+            env.unwrapped.board.is_valid_move = original_is_valid_move
+
+        self.assertEqual(env.rewards[acting_agent], -1.0)
+        self.assertTrue(env.infos[acting_agent].get("invalid_move", False))
+        env.close()
+
 
 if __name__ == "__main__":
     unittest.main()

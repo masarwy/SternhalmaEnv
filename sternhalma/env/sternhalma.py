@@ -148,6 +148,16 @@ class raw_env(AECEnv):
             self.infos[self.agent_selection] = {'valid_moves': self.get_available_actions(self.agent_selection)}
             return
 
+        normalized_action = self.normalize_action(action)
+        valid_actions = {self.normalize_action(candidate) for candidate in self.infos[agent]['valid_moves']}
+        if normalized_action is None or normalized_action not in valid_actions:
+            reward = -1.0
+            info = {'invalid_move': True, 'valid_moves': self.infos[agent]['valid_moves']}
+            self.rewards[agent] = reward
+            self.infos[agent] = info
+            self._accumulate_rewards()
+            return
+
         move = self.convert_action_to_move(action)
         if self.board.is_valid_move(move, player_idx):
             self.board.make_move(player_idx, move)
@@ -211,6 +221,23 @@ class raw_env(AECEnv):
             List[Tuple[int, int]]: The corresponding move on the board.
         """
         return [(cell[0] + 1, cell[1] + 1) for cell in action]
+
+    def normalize_action(self, action: Any) -> Optional[Tuple[Tuple[int, int], ...]]:
+        """
+        Convert an action-like input into a hashable canonical tuple-of-tuples.
+        Returns None when the shape or element types are invalid.
+        """
+        if not isinstance(action, list):
+            return None
+
+        normalized: List[Tuple[int, int]] = []
+        for cell in action:
+            if not isinstance(cell, (list, tuple)) or len(cell) != 2:
+                return None
+            if not isinstance(cell[0], (int, np.integer)) or not isinstance(cell[1], (int, np.integer)):
+                return None
+            normalized.append((int(cell[0]), int(cell[1])))
+        return tuple(normalized)
 
     def convert_move_to_action(self, move: List[Tuple[int, int]]) -> Any:
         """
