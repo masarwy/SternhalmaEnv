@@ -81,14 +81,28 @@ class raw_env(AECEnv):
 
         self.char_encoding = {' ': -2, 'O': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, '|': -1}
 
-        self.observation_spaces = {agent: spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8) for agent in
-                                   self.agents}
+        self.observation_spaces = {
+            agent: spaces.Dict(
+                {
+                    "board": spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8),
+                    "current_player": spaces.Discrete(self.num_players),
+                }
+            )
+            for agent in self.agents
+        }
 
         # Jumping over all the pieces
         max_length = num_players * ((board_diagonal // 2) * (board_diagonal // 2 + 1)) // 2
 
-        self.action_spaces = {agent: VariableLengthTupleSpace(max_length=max_length, low=0, high=max(h - 1, w - 1)) for
-                              agent in self.agents}
+        self.action_spaces = {
+            agent: VariableLengthTupleSpace(
+                max_length=max_length,
+                low=0,
+                high=max(h - 1, w - 1),
+                allow_noop=True,
+            )
+            for agent in self.agents
+        }
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -134,7 +148,7 @@ class raw_env(AECEnv):
         if self.render_mode == "human":
             self.render()
 
-    def step(self, action: List[Tuple[int, int]]) -> None:
+    def step(self, action: Optional[List[Tuple[int, int]]]) -> None:
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
             return self._was_dead_step(action)
 
@@ -142,13 +156,18 @@ class raw_env(AECEnv):
         player_idx = self.agents.index(agent)
         self._clear_rewards()
 
+        normalized_action = self.normalize_action(action)
+        if normalized_action == tuple():
+            self._accumulate_rewards()
+            self.skip_turn()
+            return
+
         if not self.infos[agent]['valid_moves']:  # If no available actions, skip to next player
             self._accumulate_rewards()  # Accumulate rewards if any before skipping
             self.agent_selection = self._agent_selector.next()  # Move to the next agent
             self.infos[self.agent_selection] = {'valid_moves': self.get_available_actions(self.agent_selection)}
             return
 
-        normalized_action = self.normalize_action(action)
         valid_actions = {self.normalize_action(candidate) for candidate in self.infos[agent]['valid_moves']}
         if normalized_action is None or normalized_action not in valid_actions:
             reward = -1.0
@@ -158,7 +177,7 @@ class raw_env(AECEnv):
             self._accumulate_rewards()
             return
 
-        move = self.convert_action_to_move(action)
+        move = self.convert_action_to_move(list(normalized_action))
         if self.board.is_valid_move(move, player_idx):
             self.board.make_move(player_idx, move)
             reward = self.calculate_reward(player_idx, move)
@@ -193,7 +212,7 @@ class raw_env(AECEnv):
         self.agent_selection = self._agent_selector.next()
         self.infos[self.agent_selection] = {'valid_moves': self.get_available_actions(self.agent_selection)}
 
-    def observe(self, agent: str) -> np.ndarray:
+    def observe(self, agent: str) -> Dict[str, Any]:
         """
         Returns the observation for a given agent.
 
@@ -203,11 +222,14 @@ class raw_env(AECEnv):
         Returns:
             np.ndarray: The observation of the environment for the specified agent.
         """
-        return self.state()
+        return {
+            "board": self.state(),
+            "current_player": int(self.agents.index(self.agent_selection)),
+        }
 
     def state(self) -> np.ndarray:
         board_array = np.array(self.board.get_grid())
-        observation = np.vectorize(self.char_encoding.get)(board_array[1:, 1:])
+        observation = np.vectorize(self.char_encoding.get)(board_array[1:, 1:]).astype(np.int8)
         return observation
 
     def convert_action_to_move(self, action: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
@@ -227,6 +249,9 @@ class raw_env(AECEnv):
         Convert an action-like input into a hashable canonical tuple-of-tuples.
         Returns None when the shape or element types are invalid.
         """
+        if action is None:
+            return tuple()
+
         if not isinstance(action, list):
             return None
 

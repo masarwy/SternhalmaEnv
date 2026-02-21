@@ -34,9 +34,14 @@ class EnvTests(unittest.TestCase):
     def test_state_matches_observation_space_shape(self):
         env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
         env.reset()
+        observation = env.observe(env.agent_selection)
         state = env.state()
-        expected_shape = env.observation_space(env.agent_selection).shape
-        self.assertEqual(state.shape, expected_shape)
+
+        self.assertIn("board", observation)
+        self.assertIn("current_player", observation)
+        self.assertEqual(observation["board"].shape, state.shape)
+        self.assertEqual(int(observation["current_player"]), env.agents.index(env.agent_selection))
+        self.assertTrue(env.observation_space(env.agent_selection).contains(observation))
         env.close()
 
     def test_step_rejects_action_not_in_valid_moves(self):
