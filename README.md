@@ -7,6 +7,8 @@ PettingZoo AEC environment for Sternhalma (Chinese Checkers) with configurable p
 - Supported player counts: `2`, `3`, `4`, `6`
 - Supported render modes: `None`, `"ansi"`, `"human"`, `"rgb_array"`
 - Variable-length move actions (single-step and multi-hop paths)
+- Markov-friendly observation includes both board and current turn owner
+- Optional RLlib-oriented wrapper with fixed `Discrete(N)` actions and `action_mask`
 
 ## Install
 ```bash
@@ -36,35 +38,62 @@ for agent in env.agent_iter():
     if termination or truncation:
         break
     valid_moves = info.get("valid_moves", [])
-    action = valid_moves[0] if valid_moves else None
+    action = valid_moves[0] if valid_moves else []  # explicit no-op
     env.step(action)
 
 env.close()
 ```
 
 ## Action And Observation
-- Observation: board matrix encoded as `np.int8` where:
-  - empty playable: `0`
-  - player pieces: `1..6`
-  - non-playable filler: `-1`
-  - blank: `-2`
+- Observation (`observe(agent)`): dict with:
+  - `board`: matrix encoded as `np.int8` where:
+    - empty playable: `0`
+    - player pieces: `1..6`
+    - non-playable filler: `-1`
+    - blank: `-2`
+  - `current_player`: index of `agent_selection` in `self.agents`
 - Action: list of `(row, col)` tuples in zero-based env coordinates.
+  - Empty list `[]` is explicit no-op/skip.
   - Length `2` means a simple move or one jump.
   - Length `>2` means a jump sequence.
+- Environment only accepts actions present in `info["valid_moves"]`.
+
+## RLlib-Compatible Wrapper
+Use `sternhalma_v0.rllib_env(...)` for fixed-size discrete actions:
+
+```python
+import sternhalma_v0
+
+env = sternhalma_v0.rllib_env(
+    num_players=2,
+    board_diagonal=5,
+    render_mode=None,
+    max_actions=256,
+)
+env.reset()
+```
+
+Wrapper behavior:
+- Action space: `Discrete(max_actions)`
+- Action meaning: action `i` maps to the `i`-th currently valid move
+- Observation:
+  - `observations`: base Sternhalma observation (`board`, `current_player`)
+  - `action_mask`: `MultiBinary(max_actions)` marking valid indices for current agent
 
 ## Current Rule Semantics
 - A player wins when they have majority control of their target home triangle.
 - Invalid actions are penalized (`-1.0`) and turn does not advance.
-- If no move exists for the current player, a no-op/skip is used.
+- If no move exists for the current player, a no-op/skip is used automatically.
 
 ## Run Tests
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py" -v
+./.venv/bin/python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
 ## Project Layout
 - `sternhalma/env/sternhalma.py`: PettingZoo environment
+- `sternhalma/env/rllib_wrapper.py`: fixed discrete action wrapper + action masks
 - `sternhalma/utils/board.py`: move generation, validation, winner checks
 - `sternhalma/utils/grid.py`: board geometry and triangle utilities
 - `sternhalma/utils/types.py`: custom action space and no-op wrapper
-- `tests/`: baseline behavior tests
+- `tests/`: board/env/wrapper behavior tests
