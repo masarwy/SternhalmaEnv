@@ -10,12 +10,33 @@ PettingZoo AEC environment for Sternhalma (Chinese Checkers) with configurable p
 - Markov-friendly observation includes both board and current turn owner
 - Optional generic wrapper with fixed `Discrete(N)` actions and `action_mask`
 
-## Install
+## Installation
+
+### Install from GitHub
+
 ```bash
+pip install git+https://github.com/masarwy/SternhalmaEnv.git
+```
+
+> Creating a virtual environment is optional but recommended.
+
+---
+
+## Development Setup
+
+Clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/masarwy/SternhalmaEnv.git
+cd SternhalmaEnv
+
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+
+pip install -e .
 ```
+
+This installs the package in editable mode so changes to the source code are reflected immediately.
 
 ## Quick Start
 ```bash
