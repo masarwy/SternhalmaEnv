@@ -63,6 +63,32 @@ class EnvTests(unittest.TestCase):
         self.assertTrue(env.infos[acting_agent].get("invalid_move", False))
         env.close()
 
+    def test_dead_agent_requires_none_passthrough(self):
+        env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
+        env.reset()
+        dead_agent = env.agent_selection
+
+        env.unwrapped.terminations[dead_agent] = True
+        env.step(None)
+
+        self.assertNotIn(dead_agent, env.agents)
+        env.close()
+
+    def test_reset_rebuilds_rewards_after_dead_agent_removal(self):
+        env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
+        env.reset()
+        dead_agent = env.agent_selection
+
+        env.unwrapped.terminations[dead_agent] = True
+        env.step(None)
+        self.assertNotIn(dead_agent, env.rewards)
+
+        env.reset()
+
+        self.assertEqual(set(env.rewards.keys()), set(env.possible_agents))
+        self.assertTrue(all(value == 0.0 for value in env.rewards.values()))
+        env.close()
+
 
 if __name__ == "__main__":
     unittest.main()

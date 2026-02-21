@@ -138,7 +138,7 @@ class raw_env(AECEnv):
 
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.reset()
-        self._clear_rewards()
+        self.rewards = {agent: 0.0 for agent in self.agents}
         self._cumulative_rewards = {name: 0 for name in self.agents}
         self.terminations = {name: False for name in self.agents}
         self.truncations = {name: False for name in self.agents}

@@ -39,8 +39,18 @@ class VariableLengthTupleSpace(Space):
 
 class HandleNoOpWrapper(BaseWrapper):
     def step(self, action):
-        if action is None:
-            # Normalize None no-op into an explicit in-space no-op action.
-            super().step([])
-        else:
-            super().step(action)
+        current_agent = self.agent_selection
+        is_dead_agent = (
+            current_agent is not None
+            and (
+                self.terminations.get(current_agent, False)
+                or self.truncations.get(current_agent, False)
+            )
+        )
+
+        if action is None and not is_dead_agent:
+            # Normalize live-agent None no-op into an explicit in-space no-op action.
+            return super().step([])
+
+        # Dead agents must receive None so _was_dead_step can process removal correctly.
+        return super().step(action)
