@@ -8,7 +8,7 @@ PettingZoo AEC environment for Sternhalma (Chinese Checkers) with configurable p
 - Supported render modes: `None`, `"ansi"`, `"human"`, `"rgb_array"`
 - Variable-length move actions (single-step and multi-hop paths)
 - Markov-friendly observation includes both board and current turn owner
-- Optional RLlib-oriented wrapper with fixed `Discrete(N)` actions and `action_mask`
+- Optional generic wrapper with fixed `Discrete(N)` actions and `action_mask`
 
 ## Install
 ```bash
@@ -58,13 +58,13 @@ env.close()
   - Length `>2` means a jump sequence.
 - Environment only accepts actions present in `info["valid_moves"]`.
 
-## RLlib-Compatible Wrapper
-Use `sternhalma_v0.rllib_env(...)` for fixed-size discrete actions:
+## Discrete Action Wrapper
+Use `sternhalma_v0.discrete_action_env(...)` for fixed-size discrete actions:
 
 ```python
 import sternhalma_v0
 
-env = sternhalma_v0.rllib_env(
+env = sternhalma_v0.discrete_action_env(
     num_players=2,
     board_diagonal=5,
     render_mode=None,
@@ -92,7 +92,7 @@ Wrapper behavior:
 
 ## Project Layout
 - `sternhalma/env/sternhalma.py`: PettingZoo environment
-- `sternhalma/env/rllib_wrapper.py`: fixed discrete action wrapper + action masks
+- `sternhalma/env/discrete_action_wrapper.py`: fixed discrete action wrapper + action masks
 - `sternhalma/utils/board.py`: move generation, validation, winner checks
 - `sternhalma/utils/grid.py`: board geometry and triangle utilities
 - `sternhalma/utils/types.py`: custom action space and no-op wrapper
