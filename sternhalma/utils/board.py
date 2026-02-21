@@ -166,14 +166,23 @@ class Board:
 
         else:
             curr_row, curr_col = positions[0]
+            visited = {positions[0]}
             for i in range(1, len(positions)):
                 next_row, next_col = positions[i]
 
                 if not (0 < next_row < self.height and 0 < next_col < self.width):
                     return False
 
+                # Multi-step moves must be jump sequences only, and positions cannot repeat.
+                row_delta = abs(curr_row - next_row)
+                col_delta = abs(curr_col - next_col)
+                if not ((row_delta == 2 and col_delta == 2) or (row_delta == 4 and col_delta == 0)):
+                    return False
+                if (next_row, next_col) in visited:
+                    return False
+
                 mid_row, mid_col = (next_row + curr_row) // 2, (next_col + curr_col) // 2
-                if self.grid[mid_row][mid_col] == 'O':
+                if not self.grid[mid_row][mid_col].isupper() or self.grid[mid_row][mid_col] == 'O':
                     return False
 
                 # Check if to_position is within board bounds
@@ -189,6 +198,7 @@ class Board:
                         return False
 
                 curr_row, curr_col = next_row, next_col
+                visited.add((curr_row, curr_col))
 
             return True
 
