@@ -46,11 +46,11 @@ class raw_env(AECEnv):
     VALID_REWARD_MODES = {"sparse", "dense", "potential_shaped"}
 
     def __init__(
-        self,
-        num_players: int,
-        board_diagonal: int,
-        render_mode: Optional[str],
-        reward_mode: str = "sparse",
+            self,
+            num_players: int,
+            board_diagonal: int,
+            render_mode: Optional[str],
+            reward_mode: str = "sparse",
     ):
         """
         Initializes the Sternhalma environment with the specified number of players and board size.
@@ -327,11 +327,14 @@ class raw_env(AECEnv):
             return 0
         return min(self._hex_distance(position, home_position) for home_position in home_positions)
 
+    def _phi(self, position, player_idx):
+        return -self._distance_to_home(position, player_idx)
+
     def sparse_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
         start_position = move[0]
         final_position = move[-1]
         if self.board.is_in_home_triangle(final_position, player_idx) and not self.board.is_in_home_triangle(
-            start_position, player_idx
+                start_position, player_idx
         ):
             return 1.0
         return 0.0
@@ -343,16 +346,24 @@ class raw_env(AECEnv):
         final_distance = self._distance_to_home(final_position, player_idx)
         return float(start_distance - final_distance)
 
-    def potential_shaped_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
-        return self.sparse_reward(player_idx, move) + self.dense_reward(player_idx, move)
+    def potential_shaped_reward(self, player_idx: int, move: List[Tuple[int, int]], gamma: float) -> float:
+        start = move[0]
+        final = move[-1]
 
-    def calculate_reward(self, player_idx: int, move: List[Tuple[int, int]]) -> float:
+        base_reward = self.sparse_reward(player_idx, move)
+
+        shaping = gamma * self._phi(final, player_idx) - self._phi(start, player_idx)
+
+        return base_reward + shaping
+
+    def calculate_reward(self, player_idx: int, move: List[Tuple[int, int]], gamma: Optional[float] = 1.) -> float:
         """
         Calculate the reward for the acting agent according to `self.reward_mode`.
 
         Args:
             player_idx (int): The index of the player who made the move.
             move (List[Tuple[int, int]]): The move made by the player.
+            gamma (Optional[float]): The discount factor for potential-based reward shaping to ensure a telescopic sum
 
         Returns:
             float: The reward resulting from the move.
@@ -362,7 +373,7 @@ class raw_env(AECEnv):
         if self.reward_mode == "dense":
             return self.dense_reward(player_idx, move)
         if self.reward_mode == "potential_shaped":
-            return self.potential_shaped_reward(player_idx, move)
+            return self.potential_shaped_reward(player_idx, move, gamma)
         raise RuntimeError(f"Unsupported reward_mode: {self.reward_mode!r}")
 
     def check_termination(self, player_idx: int) -> bool:
