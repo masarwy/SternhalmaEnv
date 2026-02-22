@@ -2,7 +2,13 @@ import sternhalma_v0
 import random
 
 if __name__ == '__main__':
-    env = sternhalma_v0.env(render_mode='human', num_players=2, board_diagonal=5)
+    env = sternhalma_v0.env(
+        render_mode='human',
+        num_players=2,
+        board_diagonal=5,
+        reward_mode='potential_shaped',
+        gamma=0.95,
+    )
     env.reset()
 
     for agent in env.agent_iter():

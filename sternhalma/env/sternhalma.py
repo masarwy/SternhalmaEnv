@@ -51,6 +51,7 @@ class raw_env(AECEnv):
             board_diagonal: int,
             render_mode: Optional[str],
             reward_mode: str = "sparse",
+            gamma: float = 1.0,
     ):
         """
         Initializes the Sternhalma environment with the specified number of players and board size.
@@ -60,6 +61,7 @@ class raw_env(AECEnv):
             board_diagonal (int): The size of the game board, measured diagonally across.
             render_mode (Optional[str]): The mode used for rendering. Can be 'human', 'ansi', or 'rgb_array'.
             reward_mode (str): Reward calculation mode. One of: "sparse", "dense", "potential_shaped".
+            gamma (float): Discount factor used in "potential_shaped" reward mode.
 
         Raises:
             ValueError: If the board diagonal is not odd or less than 3, or if an invalid number of players is specified.
@@ -76,9 +78,12 @@ class raw_env(AECEnv):
             raise ValueError(
                 f"reward_mode must be one of {sorted(self.VALID_REWARD_MODES)}, got: {reward_mode!r}."
             )
+        if not isinstance(gamma, (int, float)) or not 0.0 <= float(gamma) <= 1.0:
+            raise ValueError(f"gamma must be a float in [0, 1], got: {gamma!r}.")
 
         self.num_players = num_players
         self.reward_mode = reward_mode
+        self.gamma = float(gamma)
         self.board = Board(board_diagonal, num_players)
         h, w = self.board.get_dims()
 
@@ -195,7 +200,7 @@ class raw_env(AECEnv):
         move = self.convert_action_to_move(list(normalized_action))
         if self.board.is_valid_move(move, player_idx):
             self.board.make_move(player_idx, move)
-            reward = self.calculate_reward(player_idx, move)
+            reward = self.calculate_reward(player_idx, move, self.gamma)
             if self.check_termination(player_idx):
                 self.terminations = {name: True for name in self.agents}
                 self.rewards = {name: -10 for name in self.agents}
@@ -356,14 +361,14 @@ class raw_env(AECEnv):
 
         return base_reward + shaping
 
-    def calculate_reward(self, player_idx: int, move: List[Tuple[int, int]], gamma: Optional[float] = 1.) -> float:
+    def calculate_reward(self, player_idx: int, move: List[Tuple[int, int]], gamma: float = 1.0) -> float:
         """
         Calculate the reward for the acting agent according to `self.reward_mode`.
 
         Args:
             player_idx (int): The index of the player who made the move.
             move (List[Tuple[int, int]]): The move made by the player.
-            gamma (Optional[float]): The discount factor for potential-based reward shaping to ensure a telescopic sum
+            gamma (float): Discount factor used only by the "potential_shaped" reward mode.
 
         Returns:
             float: The reward resulting from the move.

@@ -51,7 +51,8 @@ env = sternhalma_v0.env(
     num_players=2,
     board_diagonal=5,
     render_mode=None,
-    reward_mode="sparse",  # "sparse" | "dense" | "potential_shaped"
+    reward_mode="potential_shaped",  # "sparse" | "dense" | "potential_shaped"
+    gamma=0.95,  # used when reward_mode="potential_shaped"
 )
 env.reset()
 
@@ -65,6 +66,8 @@ for agent in env.agent_iter():
 
 env.close()
 ```
+
+If `reward_mode` is `"potential_shaped"`, you can set `gamma` in `[0, 1]` to control shaping strength (default: `1.0`).
 
 ## Action And Observation
 - Observation (`observe(agent)`): dict with:
@@ -109,7 +112,7 @@ Wrapper behavior:
 - Reward modes:
   - `sparse`: `+1` when a piece enters home triangle from outside, else `0`
   - `dense`: per-move distance progress toward home (`start_distance - final_distance`)
-  - `potential_shaped`: `sparse + dense`
+  - `potential_shaped`: `sparse + (gamma * phi(s') - phi(s))`, where `phi(s) = -distance_to_home`
 
 ## Run Tests
 ```bash

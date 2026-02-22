@@ -25,6 +25,16 @@ class EnvTests(unittest.TestCase):
                 reward_mode="invalid_mode",
             )
 
+    def test_invalid_gamma_raises(self):
+        with self.assertRaises(ValueError):
+            sternhalma_v0.env(
+                num_players=2,
+                board_diagonal=5,
+                render_mode=None,
+                reward_mode="potential_shaped",
+                gamma=1.5,
+            )
+
     def test_noop_action_advances_turn(self):
         env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
         env.reset()
@@ -136,6 +146,29 @@ class EnvTests(unittest.TestCase):
         raw.board.is_in_home_triangle = lambda pos, _player_idx: pos == final_position
         try:
             self.assertEqual(raw.calculate_reward(0, move), 4.0)
+        finally:
+            raw._distance_to_home = original_distance
+            raw.board.is_in_home_triangle = original_in_home
+            env.close()
+
+    def test_potential_shaped_reward_uses_custom_gamma(self):
+        env = sternhalma_v0.env(
+            num_players=2,
+            board_diagonal=5,
+            render_mode=None,
+            reward_mode="potential_shaped",
+            gamma=0.5,
+        )
+        env.reset()
+        raw = env.unwrapped
+        move = [(1, 1), (2, 2)]
+        distances = {(1, 1): 4, (2, 2): 1}
+        original_distance = raw._distance_to_home
+        original_in_home = raw.board.is_in_home_triangle
+        raw._distance_to_home = lambda pos, _player_idx: distances[pos]
+        raw.board.is_in_home_triangle = lambda _pos, _player_idx: False
+        try:
+            self.assertEqual(raw.calculate_reward(0, move, raw.gamma), 3.5)
         finally:
             raw._distance_to_home = original_distance
             raw.board.is_in_home_triangle = original_in_home
