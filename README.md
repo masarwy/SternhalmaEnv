@@ -77,6 +77,11 @@ If `reward_mode` is `"potential_shaped"`, you can set `gamma` in `[0, 1]` to con
     - non-playable filler: `-1`
     - blank: `-2`
   - `current_player`: index of `agent_selection` in `self.agents`
+  - `distances_to_home`: `float32` vector of shape `(num_players × pieces_per_player,)`.  
+    Each element is the hex distance of a piece to the nearest cell of that player's own
+    home triangle, normalised to `[0, 1]`.  Ordering: all pieces of player 0, then player 1, …
+    This gives the policy a compact spatial signal without re-learning hex geometry from the
+    raw board encoding.
 - Action: list of `(row, col)` tuples in zero-based env coordinates.
   - Empty list `[]` is explicit no-op/skip.
   - Length `2` means a simple move or one jump.
@@ -112,7 +117,14 @@ Wrapper behavior:
 - Reward modes:
   - `sparse`: `+1` when a piece enters home triangle from outside, else `0`
   - `dense`: per-move distance progress toward home (`start_distance - final_distance`)
-  - `potential_shaped`: `sparse + (gamma * phi(s') - phi(s))`, where `phi(s) = -distance_to_home`
+  - `potential_shaped`: `sparse + (gamma * phi(s') - phi(s))`, where `phi(s) = -distance_to_home`.  
+    **Important:** the `gamma` parameter passed to the env constructor should match the discount
+    factor used by the RL algorithm.  When they match, the shaped reward preserves Nash equilibria
+    in general-sum stochastic games (Ng et al., 1999; Lu et al., 2014).
+- Terminal rewards: winner receives `raw_env.WIN_REWARD` (`+10`), all other players receive
+  `raw_env.LOSS_REWARD` (`-10`).  These are set atomically in the same step so all agents observe
+  their terminal signal before being removed.  The per-move shaping reward is **not** added on top
+  of the terminal signal to avoid conflating two separate learning signals.
 
 ## Run Tests
 ```bash

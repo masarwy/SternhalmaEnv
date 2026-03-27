@@ -11,6 +11,12 @@ import pygame
 from sternhalma.utils.board import Board
 from sternhalma.utils.types import VariableLengthTupleSpace, HandleNoOpWrapper
 
+# Terminal reward magnitude for win/loss. Kept separate from per-move shaping
+# rewards so that downstream reward-scaling wrappers do not accidentally crush
+# the win/loss signal.
+_WIN_REWARD: float = 10.0
+_LOSS_REWARD: float = -10.0
+
 
 class Metadata(TypedDict):
     render_modes: List[str]
@@ -45,6 +51,10 @@ class raw_env(AECEnv):
 
     VALID_REWARD_MODES = {"sparse", "dense", "potential_shaped"}
 
+    # Win/loss magnitude (accessible on instances for wrappers that need it).
+    WIN_REWARD: float = _WIN_REWARD
+    LOSS_REWARD: float = _LOSS_REWARD
+
     def __init__(
             self,
             num_players: int,
@@ -61,7 +71,10 @@ class raw_env(AECEnv):
             board_diagonal (int): The size of the game board, measured diagonally across.
             render_mode (Optional[str]): The mode used for rendering. Can be 'human', 'ansi', or 'rgb_array'.
             reward_mode (str): Reward calculation mode. One of: "sparse", "dense", "potential_shaped".
-            gamma (float): Discount factor used in "potential_shaped" reward mode.
+            gamma (float): Discount factor for the potential-shaping term in "potential_shaped" mode.
+                This should match the discount factor (gamma) used by the RL algorithm so that the
+                shaped reward F(s,s') = gamma*phi(s') - phi(s) preserves the optimal policy
+                (Ng et al., 1999; Lu et al., 2014).
 
         Raises:
             ValueError: If the board diagonal is not odd or less than 3, or if an invalid number of players is specified.
@@ -101,11 +114,27 @@ class raw_env(AECEnv):
 
         self.char_encoding = {' ': -2, 'O': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, '|': -1}
 
+        # Number of per-piece distance features: one scalar per piece per player.
+        # For player p with k pieces, we include min hex-distance of each piece to
+        # player p's home triangle, normalised by the board's maximum possible distance.
+        pieces_per_player = (board_diagonal // 2) * (board_diagonal // 2 + 1) // 2
+        self._max_board_dist = float(3 * board_diagonal)  # loose upper bound for normalisation
+        # distance features: num_players * pieces_per_player values in [0, 1]
+        num_dist_features = self.num_players * pieces_per_player
+
         self.observation_spaces = {
             agent: spaces.Dict(
                 {
                     "board": spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8),
                     "current_player": spaces.Discrete(self.num_players),
+                    # Per-piece hex distances to *each player's own* home triangle,
+                    # normalised to [0, 1].  Shape: (num_players * pieces_per_player,)
+                    "distances_to_home": spaces.Box(
+                        low=0.0,
+                        high=1.0,
+                        shape=(num_dist_features,),
+                        dtype=np.float32,
+                    ),
                 }
             )
             for agent in self.agents
@@ -202,9 +231,20 @@ class raw_env(AECEnv):
             self.board.make_move(player_idx, move)
             reward = self.calculate_reward(player_idx, move, self.gamma)
             if self.check_termination(player_idx):
+                # ---- FIX: terminal rewards are set BEFORE _accumulate_rewards so
+                # that ALL agents (including losers) see their terminal signal in
+                # the same step.  Losing agents are then removed via _was_dead_step
+                # on the next call, but their terminal reward is already accumulated.
                 self.terminations = {name: True for name in self.agents}
-                self.rewards = {name: -10 for name in self.agents}
-                self.rewards[agent] = 10
+                # Assign shaped move reward to winner first, then overwrite with
+                # the win bonus.  Losers receive the flat loss penalty; the shaped
+                # reward for the winning move is intentionally NOT added to the
+                # loser's signal to avoid sign confusion.
+                self.rewards = {name: self.LOSS_REWARD for name in self.agents}
+                self.rewards[agent] = self.WIN_REWARD
+                # Do NOT add the per-move shaping reward on top of the terminal
+                # signal — the terminal reward dominates and mixing them conflates
+                # two separate learning signals.
         else:
             # For invalid moves
             reward = -1.0  # Penalty for invalid move
@@ -214,7 +254,9 @@ class raw_env(AECEnv):
             self._accumulate_rewards()
             return
 
-        self.rewards[agent] += reward
+        if not self.terminations[agent]:
+            # Only accumulate the shaping reward on non-terminal steps.
+            self.rewards[agent] += reward
         self.infos[agent] = {}
 
         self._accumulate_rewards()
@@ -240,12 +282,46 @@ class raw_env(AECEnv):
             agent (str): The name of the agent to observe the environment for.
 
         Returns:
-            np.ndarray: The observation of the environment for the specified agent.
+            dict: Observation containing:
+                - "board": encoded board matrix (int8).
+                - "current_player": index of the agent whose turn it is.
+                - "distances_to_home": per-piece hex distances to each player's own
+                  home triangle, normalised to [0, 1].  This gives the policy a
+                  compact spatial signal without requiring it to re-learn hex geometry
+                  from the raw board encoding.
         """
         return {
             "board": self.state(),
             "current_player": int(self.agents.index(self.agent_selection)),
+            "distances_to_home": self._compute_distances_to_home(),
         }
+
+    def _compute_distances_to_home(self) -> np.ndarray:
+        """
+        Compute per-piece hex distances to each player's own home triangle.
+
+        Returns a flat float32 array of shape (num_players * pieces_per_player,)
+        where each entry is the hex distance of a piece to the nearest cell in that
+        player's home triangle, normalised by ``_max_board_dist``.  Missing pieces
+        (already in home or captured) are represented by 0.0.
+
+        The ordering is: [player_0_piece_0, ..., player_0_piece_k,
+                          player_1_piece_0, ..., player_1_piece_k, ...]
+        """
+        pieces_per_player = (
+            self.board.diagonal // 2 * (self.board.diagonal // 2 + 1) // 2
+        )
+        features: List[float] = []
+        for player_idx in range(self.num_players):
+            pieces = list(self.board.get_player_pieces(player_idx))
+            # Pad / truncate to a fixed length for a stable observation shape.
+            for i in range(pieces_per_player):
+                if i < len(pieces):
+                    dist = float(self._distance_to_home(pieces[i], player_idx))
+                    features.append(min(dist / self._max_board_dist, 1.0))
+                else:
+                    features.append(0.0)
+        return np.array(features, dtype=np.float32)
 
     def state(self) -> np.ndarray:
         board_array = np.array(self.board.get_grid())
@@ -352,11 +428,27 @@ class raw_env(AECEnv):
         return float(start_distance - final_distance)
 
     def potential_shaped_reward(self, player_idx: int, move: List[Tuple[int, int]], gamma: float) -> float:
+        """Potential-based shaping: F(s, s') = gamma * phi(s') - phi(s).
+
+        The shaping term preserves Nash equilibria in general-sum stochastic
+        games when gamma here matches the RL algorithm's discount factor
+        (Lu et al., 2014; Ng et al., 1999).  Pass ``env.gamma`` (which should
+        equal the algorithm's gamma) when calling this method.
+
+        Args:
+            player_idx: index of the acting player.
+            move: list of board positions traversed by the move.
+            gamma: discount factor — MUST match the RL algorithm's gamma.
+
+        Returns:
+            Scalar shaped reward = sparse_reward + F(s, s').
+        """
         start = move[0]
         final = move[-1]
 
         base_reward = self.sparse_reward(player_idx, move)
 
+        # F(s, s') = gamma * phi(s') - phi(s)
         shaping = gamma * self._phi(final, player_idx) - self._phi(start, player_idx)
 
         return base_reward + shaping

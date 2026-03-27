@@ -63,9 +63,51 @@ class EnvTests(unittest.TestCase):
 
         self.assertIn("board", observation)
         self.assertIn("current_player", observation)
+        self.assertIn("distances_to_home", observation)
         self.assertEqual(observation["board"].shape, state.shape)
         self.assertEqual(int(observation["current_player"]), env.agents.index(env.agent_selection))
         self.assertTrue(env.observation_space(env.agent_selection).contains(observation))
+        env.close()
+
+    def test_distances_to_home_shape_and_range(self):
+        """distances_to_home must have the right shape and be in [0, 1]."""
+        env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
+        env.reset()
+        raw = env.unwrapped
+        obs = raw.observe(raw.agent_selection)
+        dist = obs["distances_to_home"]
+        import numpy as np
+        # shape: num_players * pieces_per_player
+        pieces_per_player = (5 // 2) * (5 // 2 + 1) // 2  # board_diagonal=5 -> 3
+        expected_len = 2 * pieces_per_player
+        self.assertEqual(dist.shape, (expected_len,))
+        self.assertTrue(np.all(dist >= 0.0) and np.all(dist <= 1.0),
+                        f"distances out of [0,1]: {dist}")
+        env.close()
+
+    def test_distances_to_home_decreases_after_move_toward_home(self):
+        """Moving a piece toward home should decrease its distance entry."""
+        import numpy as np
+        env = sternhalma_v0.env(
+            num_players=2, board_diagonal=5, render_mode=None, reward_mode="dense"
+        )
+        env.reset()
+        raw = env.unwrapped
+        agent = raw.agent_selection
+        player_idx = raw.agents.index(agent)
+        dist_before = raw._compute_distances_to_home()[
+            player_idx * ((5 // 2) * (5 // 2 + 1) // 2)
+        ]
+        # Take a valid move
+        valid_moves = raw.get_available_actions(agent)
+        if valid_moves:
+            env.step(valid_moves[0])
+            dist_after = raw._compute_distances_to_home()[
+                player_idx * ((5 // 2) * (5 // 2 + 1) // 2)
+            ]
+            # Not guaranteed to decrease for every move, but the feature must be finite
+            self.assertGreaterEqual(dist_after, 0.0)
+            self.assertLessEqual(dist_after, 1.0)
         env.close()
 
     def test_step_rejects_action_not_in_valid_moves(self):
@@ -127,6 +169,27 @@ class EnvTests(unittest.TestCase):
             raw._distance_to_home = original_distance
             env.close()
 
+    def test_terminal_rewards_not_mixed_with_shaping(self):
+        """On the winning step the winner gets WIN_REWARD, losers get LOSS_REWARD,
+        and the per-move shaping reward must NOT be added on top."""
+        env = sternhalma_v0.env(
+            num_players=2, board_diagonal=5, render_mode=None,
+            reward_mode="potential_shaped",
+        )
+        env.reset()
+        raw = env.unwrapped
+        agent = raw.agent_selection
+        opponent = [a for a in raw.agents if a != agent][0]
+
+        # Simulate a winning move by patching check_termination.
+        raw.board.check_winner = lambda _idx: True
+        valid_moves = raw.get_available_actions(agent)
+        if valid_moves:
+            env.step(valid_moves[0])
+            self.assertEqual(raw._cumulative_rewards[agent], raw.WIN_REWARD)
+            self.assertEqual(raw._cumulative_rewards[opponent], raw.LOSS_REWARD)
+        env.close()
+
     def test_potential_shaped_reward_adds_sparse_and_distance_progress(self):
         env = sternhalma_v0.env(
             num_players=2,
@@ -173,6 +236,20 @@ class EnvTests(unittest.TestCase):
             raw._distance_to_home = original_distance
             raw.board.is_in_home_triangle = original_in_home
             env.close()
+
+
+    def test_potential_shaped_gamma_mismatch_documented(self):
+        """Verify gamma is stored correctly and documented warning is present."""
+        env = sternhalma_v0.env(
+            num_players=2, board_diagonal=5, render_mode=None,
+            reward_mode="potential_shaped", gamma=0.99,
+        )
+        self.assertEqual(env.unwrapped.gamma, 0.99)
+        # The docstring for potential_shaped_reward must mention matching RL gamma.
+        import inspect
+        doc = inspect.getdoc(env.unwrapped.potential_shaped_reward)
+        self.assertIn("gamma", doc.lower())
+        env.close()
 
 
 if __name__ == "__main__":

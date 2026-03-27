@@ -9,11 +9,16 @@ class DiscreteActionMaskWrapper(BaseWrapper):
     """
     Wraps the Sternhalma AEC env with a fixed-size Discrete action space and action masks.
 
-    Observation format:
-    {
-        "observations": {"board": ..., "current_player": ...},
-        "action_mask": np.ndarray shape=(max_actions,), dtype=np.int8
-    }
+    Observation format::
+
+        {
+            "observations": {
+                "board": np.ndarray,          # encoded board matrix (int8)
+                "current_player": int,         # index of agent_selection in agents list
+                "distances_to_home": np.ndarray  # per-piece hex distances, normalised to [0,1]
+            },
+            "action_mask": np.ndarray          # shape=(max_actions,), dtype=int8
+        }
     """
 
     def __init__(self, env, max_actions: int = 256):
