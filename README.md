@@ -7,7 +7,7 @@ PettingZoo AEC environment for Sternhalma (Chinese Checkers) with configurable p
 - Supported player counts: `2`, `3`, `4`, `6`
 - Supported render modes: `None`, `"ansi"`, `"human"`, `"rgb_array"`
 - Variable-length move actions (single-step and multi-hop paths)
-- Markov-friendly observation includes both board and current turn owner
+- Markov-friendly observation: board matrix, current turn owner, and per-piece hex distances to home (`distances_to_home`)
 - Optional generic wrapper with fixed `Discrete(N)` actions and `action_mask`
 
 ## Installation
@@ -107,7 +107,7 @@ Wrapper behavior:
 - Action space: `Discrete(max_actions)`
 - Action meaning: action `i` maps to the `i`-th currently valid move
 - Observation:
-  - `observations`: base Sternhalma observation (`board`, `current_player`)
+  - `observations`: base Sternhalma observation (`board`, `current_player`, `distances_to_home`)
   - `action_mask`: `MultiBinary(max_actions)` marking valid indices for current agent
 
 ## Current Rule Semantics
