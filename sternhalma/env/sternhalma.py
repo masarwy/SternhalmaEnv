@@ -290,9 +290,20 @@ class raw_env(AECEnv):
                   compact spatial signal without requiring it to re-learn hex geometry
                   from the raw board encoding.
         """
+        # Fix 1: guard against dead-agent observation calls (e.g. after termination
+        # at diagonal>=7 the wrapper stack may still call observe() before the
+        # agent is removed from env.agents).
+        if self.agent_selection in self.agents:
+            current_player_idx = int(self.agents.index(self.agent_selection))
+        else:
+            current_player_idx = 0
+
+        # Fix 2: current_player reports whose turn it is (agent_selection),
+        # which is the correct Markov signal for all agents including the
+        # observer — it tells the policy whether it is acting or waiting.
         return {
             "board": self.state(),
-            "current_player": int(self.agents.index(self.agent_selection)),
+            "current_player": current_player_idx,
             "distances_to_home": self._compute_distances_to_home(),
         }
 

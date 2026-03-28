@@ -238,6 +238,40 @@ class EnvTests(unittest.TestCase):
             env.close()
 
 
+    def test_observe_does_not_crash_after_termination(self):
+        """observe() must not raise ValueError when called after termination
+        sets env.agents=[] (dead-agent guard, diagonal>=7 scenario)."""
+        env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
+        env.reset()
+        raw = env.unwrapped
+        # Force termination of all agents as the env itself does on a win.
+        raw.terminations = {a: True for a in raw.agents}
+        raw.agents.clear()          # mimics post-termination state
+        # Must not raise.
+        try:
+            raw.observe(raw.possible_agents[0])
+        except ValueError:
+            self.fail("observe() raised ValueError on dead agent")
+        env.close()
+
+    def test_current_player_reflects_agent_selection(self):
+        """current_player in observe() must equal the index of agent_selection,
+        regardless of which agent is observing."""
+        env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
+        env.reset()
+        raw = env.unwrapped
+        acting = raw.agent_selection
+        expected_idx = raw.agents.index(acting)
+        # Both agents should see the same current_player (whoever's turn it is).
+        for observer in raw.possible_agents:
+            obs = raw.observe(observer)
+            self.assertEqual(
+                int(obs["current_player"]), expected_idx,
+                f"observer={observer} saw current_player={obs['current_player']}, "
+                f"expected {expected_idx} ({acting})"
+            )
+        env.close()
+
     def test_potential_shaped_gamma_mismatch_documented(self):
         """Verify gamma is stored correctly and documented warning is present."""
         env = sternhalma_v0.env(
