@@ -1,6 +1,11 @@
 import unittest
 
 try:
+    from pettingzoo.test import api_test as pettingzoo_api_test
+except ModuleNotFoundError:
+    pettingzoo_api_test = None
+
+try:
     import sternhalma_v0
 except ModuleNotFoundError as exc:
     sternhalma_v0 = None
@@ -11,6 +16,65 @@ else:
 
 @unittest.skipIf(sternhalma_v0 is None, f"env dependencies are not installed: {IMPORT_ERROR}")
 class EnvTests(unittest.TestCase):
+    def _run_short_rollout(self, env, max_iter=12):
+        env.reset()
+        steps = 0
+        for _agent in env.agent_iter(max_iter=max_iter):
+            _obs, _reward, termination, truncation, info = env.last()
+            if termination or truncation:
+                action = None
+            else:
+                valid_moves = info.get("valid_moves", [])
+                action = valid_moves[0] if valid_moves else []
+            env.step(action)
+            steps += 1
+
+        self.assertGreater(steps, 0)
+
+    def test_env_factory_defaults_board_diagonal_to_seven(self):
+        env = sternhalma_v0.env(num_players=2, render_mode=None)
+        self.assertEqual(env.unwrapped.board.diagonal, 7)
+        env.close()
+
+    def test_raw_env_defaults_board_diagonal_to_seven(self):
+        env = sternhalma_v0.raw_env(num_players=2, render_mode=None)
+        self.assertEqual(env.board.diagonal, 7)
+        env.close()
+
+    @unittest.skipIf(pettingzoo_api_test is None, "pettingzoo.test.api_test is not available")
+    def test_pettingzoo_api_test_passes(self):
+        env = sternhalma_v0.env(num_players=2, render_mode=None)
+        try:
+            pettingzoo_api_test(env, num_cycles=25, verbose_progress=False)
+        finally:
+            env.close()
+
+    def test_board_diagonal_valid_odd_values_initialize_and_roll_out(self):
+        for num_players in (2, 6):
+            for board_diagonal in (3, 5, 7, 9, 11):
+                with self.subTest(num_players=num_players, board_diagonal=board_diagonal):
+                    env = sternhalma_v0.env(
+                        num_players=num_players,
+                        board_diagonal=board_diagonal,
+                        render_mode=None,
+                    )
+                    try:
+                        self.assertEqual(env.unwrapped.board.diagonal, board_diagonal)
+                        self._run_short_rollout(env)
+                    finally:
+                        env.close()
+
+    def test_board_diagonal_invalid_values_raise_value_error(self):
+        for num_players in (2, 6):
+            for board_diagonal in (4, 1):
+                with self.subTest(num_players=num_players, board_diagonal=board_diagonal):
+                    with self.assertRaises(ValueError):
+                        sternhalma_v0.env(
+                            num_players=num_players,
+                            board_diagonal=board_diagonal,
+                            render_mode=None,
+                        )
+
     def test_default_reward_mode_is_sparse(self):
         env = sternhalma_v0.env(num_players=2, board_diagonal=5, render_mode=None)
         self.assertEqual(env.unwrapped.reward_mode, "sparse")
@@ -61,10 +125,10 @@ class EnvTests(unittest.TestCase):
         observation = env.observe(env.agent_selection)
         state = env.state()
 
-        self.assertIn("board", observation)
+        self.assertIn("observation", observation)
         self.assertIn("current_player", observation)
         self.assertIn("distances_to_home", observation)
-        self.assertEqual(observation["board"].shape, state.shape)
+        self.assertEqual(observation["observation"].shape, state.shape)
         self.assertEqual(int(observation["current_player"]), env.agents.index(env.agent_selection))
         self.assertTrue(env.observation_space(env.agent_selection).contains(observation))
         env.close()

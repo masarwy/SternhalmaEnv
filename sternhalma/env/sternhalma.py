@@ -26,6 +26,7 @@ class Metadata(TypedDict):
 
 
 def env(**kwargs):
+    kwargs.setdefault("board_diagonal", 7)
     env = raw_env(**kwargs)
     env = wrappers.AssertOutOfBoundsWrapper(env)
     env = HandleNoOpWrapper(env)
@@ -58,8 +59,8 @@ class raw_env(AECEnv):
     def __init__(
             self,
             num_players: int,
-            board_diagonal: int,
-            render_mode: Optional[str],
+            board_diagonal: int = 7,
+            render_mode: Optional[str] = None,
             reward_mode: str = "sparse",
             gamma: float = 1.0,
     ):
@@ -69,6 +70,7 @@ class raw_env(AECEnv):
         Args:
             num_players (int): Number of players in the game.
             board_diagonal (int): The size of the game board, measured diagonally across.
+                Must be an odd integer greater than or equal to 3. Defaults to 7.
             render_mode (Optional[str]): The mode used for rendering. Can be 'human', 'ansi', or 'rgb_array'.
             reward_mode (str): Reward calculation mode. One of: "sparse", "dense", "potential_shaped".
             gamma (float): Discount factor for the potential-shaping term in "potential_shaped" mode.
@@ -125,7 +127,7 @@ class raw_env(AECEnv):
         self.observation_spaces = {
             agent: spaces.Dict(
                 {
-                    "board": spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8),
+                    "observation": spaces.Box(low=-2, high=6, shape=(h - 1, w - 1), dtype=np.int8),
                     "current_player": spaces.Discrete(self.num_players),
                     # Per-piece hex distances to *each player's own* home triangle,
                     # normalised to [0, 1].  Shape: (num_players * pieces_per_player,)
@@ -203,6 +205,10 @@ class raw_env(AECEnv):
 
         agent = self.agent_selection
         player_idx = self.agents.index(agent)
+        # AEC semantics: last() should report reward accumulated since this agent
+        # last acted, so we clear the acting agent's cumulative bucket before
+        # applying its next action.
+        self._cumulative_rewards[agent] = 0
         self._clear_rewards()
 
         normalized_action = self.normalize_action(action)
@@ -283,7 +289,7 @@ class raw_env(AECEnv):
 
         Returns:
             dict: Observation containing:
-                - "board": encoded board matrix (int8).
+                - "observation": encoded board matrix (int8).
                 - "current_player": index of the agent whose turn it is.
                 - "distances_to_home": per-piece hex distances to each player's own
                   home triangle, normalised to [0, 1].  This gives the policy a
@@ -302,7 +308,7 @@ class raw_env(AECEnv):
         # which is the correct Markov signal for all agents including the
         # observer — it tells the policy whether it is acting or waiting.
         return {
-            "board": self.state(),
+            "observation": self.state(),
             "current_player": current_player_idx,
             "distances_to_home": self._compute_distances_to_home(),
         }

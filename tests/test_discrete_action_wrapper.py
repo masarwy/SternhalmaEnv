@@ -14,6 +14,7 @@ class DiscreteActionWrapperTests(unittest.TestCase):
         obs = env.observe(agent)
         self.assertIn("observations", obs)
         self.assertIn("action_mask", obs)
+        self.assertIn("observation", obs["observations"])
         self.assertEqual(obs["action_mask"].shape, (16,))
         self.assertTrue(env.observation_space(agent).contains(obs))
         env.close()

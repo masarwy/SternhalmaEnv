@@ -13,7 +13,7 @@ class DiscreteActionMaskWrapper(BaseWrapper):
 
         {
             "observations": {
-                "board": np.ndarray,          # encoded board matrix (int8)
+                "observation": np.ndarray,    # encoded board matrix (int8)
                 "current_player": int,         # index of agent_selection in agents list
                 "distances_to_home": np.ndarray  # per-piece hex distances, normalised to [0,1]
             },

@@ -5,9 +5,10 @@ PettingZoo AEC environment for Sternhalma (Chinese Checkers) with configurable p
 ## Features
 - Multi-agent environment built on PettingZoo `AECEnv`
 - Supported player counts: `2`, `3`, `4`, `6`
+- `board_diagonal` accepts any odd integer `>= 3` (default: `7`)
 - Supported render modes: `None`, `"ansi"`, `"human"`, `"rgb_array"`
 - Variable-length move actions (single-step and multi-hop paths)
-- Markov-friendly observation: board matrix, current turn owner, and per-piece hex distances to home (`distances_to_home`)
+- Markov-friendly observation: `observation` matrix, current turn owner, and per-piece hex distances to home (`distances_to_home`)
 - Optional generic wrapper with fixed `Discrete(N)` actions and `action_mask`
 
 ## Installation
@@ -49,7 +50,7 @@ import sternhalma_v0
 
 env = sternhalma_v0.env(
     num_players=2,
-    board_diagonal=5,
+    board_diagonal=7,
     render_mode=None,
     reward_mode="potential_shaped",  # "sparse" | "dense" | "potential_shaped"
     gamma=0.95,  # used when reward_mode="potential_shaped"
@@ -68,10 +69,11 @@ env.close()
 ```
 
 If `reward_mode` is `"potential_shaped"`, you can set `gamma` in `[0, 1]` to control shaping strength (default: `1.0`).
+`board_diagonal` accepts any odd integer `>= 3`, and defaults to `7` when omitted.
 
 ## Action And Observation
 - Observation (`observe(agent)`): dict with:
-  - `board`: matrix encoded as `np.int8` where:
+  - `observation`: matrix encoded as `np.int8` where:
     - empty playable: `0`
     - player pieces: `1..6`
     - non-playable filler: `-1`
@@ -96,7 +98,7 @@ import sternhalma_v0
 
 env = sternhalma_v0.discrete_action_env(
     num_players=2,
-    board_diagonal=5,
+    board_diagonal=7,
     render_mode=None,
     max_actions=256,
 )
@@ -107,7 +109,7 @@ Wrapper behavior:
 - Action space: `Discrete(max_actions)`
 - Action meaning: action `i` maps to the `i`-th currently valid move
 - Observation:
-  - `observations`: base Sternhalma observation (`board`, `current_player`, `distances_to_home`)
+  - `observations`: base Sternhalma observation (`observation`, `current_player`, `distances_to_home`)
   - `action_mask`: `MultiBinary(max_actions)` marking valid indices for current agent
 
 ## Current Rule Semantics

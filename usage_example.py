@@ -5,7 +5,7 @@ if __name__ == '__main__':
     env = sternhalma_v0.env(
         render_mode='human',
         num_players=2,
-        board_diagonal=5,
+        board_diagonal=7,
         reward_mode='potential_shaped',
         gamma=0.95,
     )
