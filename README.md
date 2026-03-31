@@ -2,6 +2,12 @@
 
 PettingZoo AEC environment for Sternhalma (Chinese Checkers) with configurable player count and board diagonal size.
 
+## Preview
+
+| 2 Players | 3 Players |
+|---|---|
+| ![2 Players](assets/sternhalma_2_players.png) | ![6 Players](assets/sternhalma_3_players.png) |
+
 ## Features
 - Multi-agent environment built on PettingZoo `AECEnv`
 - Supported player counts: `2`, `3`, `4`, `6`
